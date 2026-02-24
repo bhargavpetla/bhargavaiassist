@@ -71,6 +71,7 @@ include = [
     "nanobot/templates/**/*.md",
     "nanobot/skills/**/*.md",
     "nanobot/skills/**/*.sh",
+    "nanobot/web/static/**/*",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -83,6 +84,7 @@ include = [
 
 [tool.hatch.build.targets.wheel.force-include]
 "bridge" = "nanobot/bridge"
+"nanobot/web/static" = "nanobot/web/static"
 
 [tool.ruff]
 line-length = 100

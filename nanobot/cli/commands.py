@@ -275,9 +275,11 @@ def _make_provider(config: Config):
 @app.command()
 def gateway(
     port: int = typer.Option(18790, "--port", "-p", help="Gateway port"),
+    web_port: int = typer.Option(0, "--web-port", "-w", help="Web UI port (0=use $PORT or 8080)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Start the nanobot gateway."""
+    import os
     from nanobot.config.loader import load_config, get_data_dir
     from nanobot.bus.queue import MessageBus
     from nanobot.agent.loop import AgentLoop
@@ -286,6 +288,7 @@ def gateway(
     from nanobot.cron.service import CronService
     from nanobot.cron.types import CronJob
     from nanobot.heartbeat.service import HeartbeatService
+    from nanobot.web.server import WebServer
     
     if verbose:
         import logging
@@ -401,9 +404,15 @@ def gateway(
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
     
     console.print(f"[green]✓[/green] Heartbeat: every 30m")
-    
+
+    # Web UI server
+    actual_web_port = web_port or int(os.environ.get("PORT", "8080"))
+    web = WebServer(agent=agent, host="0.0.0.0", port=actual_web_port)
+    console.print(f"[green]✓[/green] Web UI on port {actual_web_port}")
+
     async def run():
         try:
+            await web.start()
             await cron.start()
             await heartbeat.start()
             await asyncio.gather(
@@ -413,6 +422,7 @@ def gateway(
         except KeyboardInterrupt:
             console.print("\nShutting down...")
         finally:
+            await web.stop()
             await agent.close_mcp()
             heartbeat.stop()
             cron.stop()

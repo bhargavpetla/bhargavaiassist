@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: bhargav-ai-assist
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_BASE_URL
+        value: "https://integrate.api.nvidia.com/v1"
+      - key: NANOBOT_MODEL
+        value: "custom/moonshotai/kimi-k2.5"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ALLOW_FROM
+        value: "*"
+      - key: TELEGRAM_ENABLED
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BRAVE_API_KEY
+        sync: false

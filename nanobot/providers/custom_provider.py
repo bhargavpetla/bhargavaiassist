@@ -14,13 +14,14 @@ class CustomProvider(LLMProvider):
 
     def __init__(self, api_key: str = "no-key", api_base: str = "http://localhost:8000/v1", default_model: str = "default"):
         super().__init__(api_key, api_base)
-        self.default_model = default_model
+        # Strip the "custom/" routing prefix — the API expects only the model ID
+        self.default_model = default_model.removeprefix("custom/")
         self._client = AsyncOpenAI(api_key=api_key, base_url=api_base)
 
     async def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
                    model: str | None = None, max_tokens: int = 4096, temperature: float = 0.7) -> LLMResponse:
         kwargs: dict[str, Any] = {
-            "model": model or self.default_model,
+            "model": (model or self.default_model).removeprefix("custom/"),
             "messages": self._sanitize_empty_content(messages),
             "max_tokens": max(1, max_tokens),
             "temperature": temperature,

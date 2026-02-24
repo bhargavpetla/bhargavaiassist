@@ -5,7 +5,7 @@ import json
 import os
 import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -44,8 +44,8 @@ def _validate_url(url: str) -> tuple[bool, str]:
 
 
 class WebSearchTool(Tool):
-    """Search the web using Brave Search API."""
-    
+    """Search the web using DuckDuckGo (free, no API key) or Brave Search API."""
+
     name = "web_search"
     description = "Search the web. Returns titles, URLs, and snippets."
     parameters = {
@@ -56,17 +56,19 @@ class WebSearchTool(Tool):
         },
         "required": ["query"]
     }
-    
+
     def __init__(self, api_key: str | None = None, max_results: int = 5):
         self.api_key = api_key or os.environ.get("BRAVE_API_KEY", "")
         self.max_results = max_results
-    
+
     async def execute(self, query: str, count: int | None = None, **kwargs: Any) -> str:
-        if not self.api_key:
-            return "Error: BRAVE_API_KEY not configured"
-        
+        n = min(max(count or self.max_results, 1), 10)
+        if self.api_key:
+            return await self._brave_search(query, n)
+        return await self._ddg_search(query, n)
+
+    async def _brave_search(self, query: str, n: int) -> str:
         try:
-            n = min(max(count or self.max_results, 1), 10)
             async with httpx.AsyncClient() as client:
                 r = await client.get(
                     "https://api.search.brave.com/res/v1/web/search",
@@ -75,11 +77,9 @@ class WebSearchTool(Tool):
                     timeout=10.0
                 )
                 r.raise_for_status()
-            
             results = r.json().get("web", {}).get("results", [])
             if not results:
                 return f"No results for: {query}"
-            
             lines = [f"Results for: {query}\n"]
             for i, item in enumerate(results[:n], 1):
                 lines.append(f"{i}. {item.get('title', '')}\n   {item.get('url', '')}")
@@ -87,7 +87,45 @@ class WebSearchTool(Tool):
                     lines.append(f"   {desc}")
             return "\n".join(lines)
         except Exception as e:
-            return f"Error: {e}"
+            return f"Brave search error: {e}"
+
+    async def _ddg_search(self, query: str, n: int) -> str:
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+                r = await client.get(
+                    "https://html.duckduckgo.com/html/",
+                    params={"q": query},
+                    headers={"User-Agent": USER_AGENT},
+                )
+                r.raise_for_status()
+            results = self._parse_ddg_html(r.text, n)
+            if not results:
+                return f"No results for: {query}"
+            lines = [f"Results for: {query}\n"]
+            for i, (title, url, snippet) in enumerate(results, 1):
+                lines.append(f"{i}. {title}\n   {url}")
+                if snippet:
+                    lines.append(f"   {snippet}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Search error: {e}"
+
+    @staticmethod
+    def _parse_ddg_html(page: str, n: int) -> list[tuple[str, str, str]]:
+        results: list[tuple[str, str, str]] = []
+        link_pattern = re.compile(r'<a[^>]+class="result__a"[^>]+href="([^"]*)"[^>]*>([\s\S]*?)</a>', re.I)
+        snippet_pattern = re.compile(r'<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)</a>', re.I)
+        links = link_pattern.findall(page)
+        snippets = snippet_pattern.findall(page)
+        for i, (url, title_html) in enumerate(links[:n]):
+            title = _strip_tags(title_html).strip()
+            if "uddg=" in url:
+                qs = parse_qs(urlparse(url).query)
+                url = qs.get("uddg", [url])[0]
+            snippet = _strip_tags(snippets[i]).strip() if i < len(snippets) else ""
+            if title and url:
+                results.append((title, url, snippet))
+        return results
 
 
 class WebFetchTool(Tool):
